@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Carp;
 use WWW::Mechanize;
-our $VERSION='0.01';
+our $VERSION='0.02';
 
 
 # hackery for https proxy support, inspired by Finance::Bank::Barclays
@@ -70,15 +70,16 @@ __END__
 Finance::Bank::ES::INGDirect - Check your INGDirect bank accounts from Perl 
 
 =head1 SYNOPSIS
-my $nif="11111111B";
-my $fenac="12/12/1212";
-my $pin="929999";
-my @cuentas=Finance::Bank::ES::INGDirect->ver_saldos(	documento=>$nif,
-							fecha_nacimiento=>$fenac,
-							pin=> $pin);
-foreach (@cuentas) {
-	print "Desc: ".$_->{descripcion}." Num: ".$_->{numero}." Saldo: ".$_->{saldo}."\n";
-}
+
+  my $nif="11111111B";
+  my $fenac="12/12/1212";
+  my $pin="929999";
+  my @cuentas=Finance::Bank::ES::INGDirect->ver_saldos(	documento=>$nif,
+  							fecha_nacimiento=>$fenac  ,
+  							pin=> $pin);
+  foreach (@cuentas) {
+  	print "Desc: ".$_->{descripcion}." Num: ".$_->{numero}." Saldo: ".$_->{saldo}."\n";
+  }
 
 =head1 DESCRIPTION
 
@@ -111,41 +112,41 @@ Ten cuidado con el modulo. Examina el fuente para que veas que no hago
 cosas raras.
 Pasalo a traves de un proxy para que veas que no me conecto a sitios raros.
 
-=head1 NICE EXAMPLE WITH TK
+=head1 EXAMPLES
 
-use Finance::Bank::ES::INGDirect;
-use Tk;
-use strict;
+  use Finance::Bank::ES::INGDirect;
+  use Tk;
+  use strict;
+  
+  my $main = MainWindow->new;
+  $main->Label(-text => 'NIF')->pack;
+  my $nif = $main->Entry(-width => 10);
+  $nif->pack;
+  $main->Label(-text => 'Fecha Nacimiento(DD/MM/AAAA)')->pack;
+  my $fenac = $main->Entry(-width => 10);
+  $fenac->pack;
+  $main->Label(-text => 'PIN')->pack;
+  my $pin = $main->Entry(-width => 7, -show => '*' );
+  $pin->pack;
+  $main->Label(-text => 'Datos')->pack;
+  my $d = $main->MListbox(  -columns =>     [[-text=>'Descripcion']  ,
+  					   [-text=>'Numero'],
+  					   [-text=>'Saldo']]);
+  $d->pack;
+  $main->Button(-text => 'Conectar!',
+                -command => sub{ver_saldos($nif->get, $fenac->get, $pin->get)}
+                )->pack;
+  MainLoop;
 
-my $main = MainWindow->new;
-$main->Label(-text => 'NIF')->pack;
-my $nif = $main->Entry(-width => 10);
-$nif->pack;
-$main->Label(-text => 'Fecha Nacimiento(DD/MM/AAAA)')->pack;
-my $fenac = $main->Entry(-width => 10);
-$fenac->pack;
-$main->Label(-text => 'PIN')->pack;
-my $pin = $main->Entry(-width => 7, -show => '*' );
-$pin->pack;
-$main->Label(-text => 'Datos')->pack;
-my $d = $main->MListbox(  -columns =>     [[-text=>'Descripcion'],
-					   [-text=>'Numero'],
-					   [-text=>'Saldo']]);
-$d->pack;
-$main->Button(-text => 'Conectar!',
-              -command => sub{ver_saldos($nif->get, $fenac->get, $pin->get)}
-              )->pack;
-MainLoop;
-
-sub ver_saldos {
-	my ($nif, $fenac, $pin) = @_;
-	my @cuentas=Finance::Bank::ES::INGDirect->ver_saldos(	documento=>$nif,
-								fecha_nacimiento=>$fenac,
-								pin=> $pin);
-	foreach (@cuentas) {
-		$d->insert(0,[$_->{descripcion},$_->{numero},$_->{saldo}]);
-	}
-}
+  sub ver_saldos {
+  	my ($nif, $fenac, $pin) = @_;
+  	my @cuentas=Finance::Bank::ES::INGDirect->ver_saldos(	documento=>$nif,
+  								fecha_nacimiento=>$fenac,
+  								pin=> $pin);
+  	foreach (@cuentas) {
+  		$d->insert(0,[$_->{descripcion},$_->{numero},$_->{saldo}]);
+  	}
+  }
 
 
 =head1 SEE ALSO
