@@ -1,66 +1,139 @@
 package Finance::Bank::ES::INGDirect;
 
-use strict;
+use WWW::Mechanize;
+use HTML::Tree;
+use Digest::MD5 qw (md5_base64);
 use warnings;
 use Carp;
-use WWW::Mechanize;
-our $VERSION='0.02';
+our $VERSION='0.03';
 
 
-# hackery for https proxy support, inspired by Finance::Bank::Barclays
-# thanks Dave Holland!
-my $https_proxy=$ENV{https_proxy};
-delete $ENV{https_proxy} if($https_proxy);
-our $browser = WWW::Mechanize->new(env_proxy=>1);
-$browser->env_proxy;     # Load proxy settings (but not the https proxy)
-$ENV{https_proxy}=$https_proxy if($https_proxy);
+my $inicio='https://www.ingdirect.es/WebTransactional/Transactional/AccesoClientes.asp';
+my $cpin='https://www.ingdirect.es/WebTransactional/Transactional/clientes/access/Cappin.asp';
+my $imagenes="https://www.ingdirect.es/WebTransactional/Transactional/clientes/images/acceso/";
+my $todosdatos="https://www.ingdirect.es/WebTransactional/Transactional/clientes/position/globalinf_all_products.asp?opcion1=1&opcion2=1";
+
+sub entra {
+ my($self,$clave,$documento,$tipo,$fechan)=(@_);
+ $self = {};
+ bless $self;
+ my ($birthDay,$birthMonth,$birthYear)=split("/",$fechan);
+ my @aclave=split "",$clave;
+ my %numeros;
+ my %posicion;
+ $numeros{2}="kGZIA+MhSDZwAJNbKPVQuw";
+ $numeros{0}="/G8ZknsmSdWsGKieoJPTAQ";
+ $numeros{1}="gzlcyXsBJ39n4/zwAxXcuQ";
+ $numeros{6}="gbuU5oA87kDZVI/6iFHwqQ";
+ $numeros{5}="oYkWYg/mzWdTQ5/tWKIbiw";
+ $numeros{4}="JZvMzVSO6KoUA/F79ietTA";
+ $numeros{7}="2X4WjJJmFRbvvhr/tW/n0Q";
+ $numeros{3}="IgHJh1ghY+ibtkZobrCM/w";
+ $numeros{8}="jTch8Vwv19eh0YgpirETiA";
+ $numeros{9}="+EFFvwg3jNmSxVxk/GJt+g";
+ %hashes=reverse %numeros;
+ # Thanks to Dev Holland for the proxy trick
+ my $https_proxy=$ENV{https_proxy};
+ delete $ENV{https_proxy} if($https_proxy);
+ $mech = WWW::Mechanize->new(env_proxy=>1);
+ $mech->env_proxy;     # Load proxy settings (but not the https proxy)
+ $mech2 = WWW::Mechanize->new(env_proxy=>1);
+ $mech2->env_proxy;     # Load proxy settings (but not the https proxy)
+ $ENV{https_proxy}=$https_proxy if($https_proxy);
+ $mech->agent_alias('Windows IE 6');
+ $mech2->agent_alias('Windows IE 6');
+ $self{m1}=$mech;
+ $self{m2}=$mech2;
+ my $resultado=$mech->get($inicio);
+ #print $resultado->content();
+ $resultado=$mech->follow_link( url_regex => qr/entrada.asp/i );
+ #print $resultado->content();
+ my $f1=$mech->form_name('form1');
+ $f1->method('POST');
+ $f1->action($cpin);
+ $f1->value('cbodocument',$tipo);
+ $f1->value('id',$documento);
+ $f1->value('birthDay',$birthDay);
+ $f1->value('birthMonth',$birthMonth);
+ $f1->value('birthYear',$birthYear);
+ $resultado=$mech->submit_form(form_name=>'form1');
+ my $texto=$resultado->content();
+ #print $texto;
+ my $pos=0;
+ while ( $texto=~/src=....images.acceso.([^\s]*?gif). onclick/mgs) {
+  my $i=$1;
+  my $imagen=$mech2->get($imagenes.$i);
+  my $digest=md5_base64($imagen->content());
+  #print $hashes{$digest}.":".$imagenes.$i."->".$digest."\n";
+  $posicion{$hashes{$digest}}=$pos;
+  $pos++;
+ }
+ $f1=$mech->form_name('LoginForm');
+ while ( $texto=~/name="txt_Pin(\d)"/mgs) {
+  my $cual=$1;
+  $f1->value("txt_Pin".$cual,$posicion{$aclave[$cual-1]});
+ }
+ $resultado=$mech->submit_form(form_name=>'LoginForm');
+ $texto=$resultado->content();
+ $resultado=$mech->submit_form(form_name=>'f1');
+ return $self;
+}
+
+sub balances {
+ my ($self)=(@_);
+ my $mech=$self{m1};
+ my $resultado=$mech->get($todosdatos);
+ #print $resultado->content();
+ my $tree = HTML::TreeBuilder->new();
+ $tree->parse($resultado->content());
+ $tree->eof();
+ $tree->elementify();
+ my $datos="";
+ my @elementos=$tree->look_down("_tag","td","class","negro10tablewithoutline");
+ foreach my $el (@elementos) {
+  if($el->as_text()=~/pciones/) {
+   $datos=$datos."\n";
+  }
+  else {
+   $datos=$datos.$el->as_text()."\t";
+  }
+ }
+ @elementos=$tree->look_down("_tag","td","class","negro10tableline");
+ foreach my $el (@elementos) {
+  if($el->as_text()=~/pciones/) {
+   $datos=$datos."\n";
+  }
+  else {
+   $datos=$datos.$el->as_text()."\t";
+  }
+ }
+ my @cuentas;
+ foreach my $lin (split "\n",$datos) {
+  my @t=split "\t",$lin;
+  $t[2]=~s/[^\d|^,]//g;
+  #print $t[2];
+  push @cuentas,( { descripcion =>$t[0],
+        	    numero => $t[1],
+	            saldo => $t[2] } ) if defined ($t[2]) and length($t[2])>0;
+ }
+ return @cuentas;
+}
 
 sub ver_saldos {
-	my ($class,%opts)=@_;
-	croak "Debe proporcionar un Documento" unless exists $opts{documento};
-	croak "Debe proporcionar una fecha de nacimiento DD/MM/AAAA" unless exists $opts{fecha_nacimiento};
-	croak "Debe proporcionar un PIN" unless exists $opts{pin};
-        $opts{tipo_documento}="NIF" unless exists $opts{tipo_documento};
-	my $base="https://www.ingdirect.es/WebTransactional/Transactional/clientes/access/";
-	my %tipodoc=(NIF => 0,
-		     Pasaporte=> 1,
-		     TarjetaResidencia=> 2);		
-	my $cbodocument=$tipodoc{NIF};
-	my $id=$opts{documento};
-	my ($birthDay,$birthMonth,$birthYear)=split("/",$opts{fecha_nacimiento});	
-	my $pine=$opts{pin};
-	my @pin=split //,$pine;	
-	my $entrada = 	$base .'cappin.asp?cbodocument='. $cbodocument
-			      .'&id='. $id 
-			      .'&birthDay='. $birthDay 
-		              .'&birthMonth='. $birthMonth 
-		              .'&birthYear='. $birthYear;		
-        my $re='name="txt_Pin(\d*)"';
-        my $browser = WWW::Mechanize->new();
-        $browser->agent_alias("Windows IE 6");
-        my $r=$browser->get($entrada);
-        croak "Can't open INGDirect entrance" unless $browser->res->is_success();
-        my $datos=$r->content;
-        $browser->form('LoginForm');
-        while ($datos=~m{$re}gs){
-		$browser->field("txt_Pin$1", $pin[$1-1]);
-	}
-	$r=$browser->submit();
-	croak "Can't open INGDirect login" unless $browser->res->is_success();
-	$r=$browser->follow_link(n=>2); #Frames
-	croak "Can't open Lower Frame" unless $browser->res->is_success();
-	$r=$browser->follow_link(url_regex => qr{position/globalinf_all_cuentas.asp}i); #Saldos productos
-	croak "Can't open balances" unless $browser->res->is_success();
-	my $chorro='<TD STYLE="FONT: 10px Arial, Helvetica, sans-serif;" width="150" align="left" valign="middle">(.*?)</TD>.*?<TD STYLE="FONT: 10px Arial, Helvetica, sans-serif;" width="150" align="center" valign="middle">(\d*?)</TD>.*?<TD align="right" STYLE="FONT: 10px Arial, Helvetica, sans-serif;" width="112">&nbsp;(.*?)&nbsp; €&nbsp;</TD>';
-	$datos=$r->content;
-	my @cuentas=();
-	while($datos=~m{$chorro}gs){
-		push @cuentas,( { descripcion =>$1,
-				  numero => $2,
-				  saldo => $3 } );
-	}
-	return @cuentas;
+ my ($class,%opts)=@_;
+ croak "Debe proporcionar un Documento" unless exists $opts{documento};
+ croak "Debe proporcionar una fecha de nacimiento DD/MM/AAAA" unless exists $opts{fecha_nacimiento};
+ croak "Debe proporcionar un PIN" unless exists $opts{pin};
+ $opts{tipo_documento}="NIF" unless exists $opts{tipo_documento};
+ my %tipodoc=(NIF => 0,
+              Pasaporte=> 1,
+              TarjetaResidencia=> 2);
+ my $cbodocument=$tipodoc{NIF};
+ my $temporal=$class->entra($opts{pin},$opts{documento},$cbodocument,$opts{fecha_nacimiento});
+ return $temporal->balances();
 }
+
+
 1;
 __END__
 # Documentation
@@ -96,6 +169,8 @@ None by default.
 =head2 REQUIRE
 
 WWW::Mechanize
+HTML::Tree
+Digest::MD5
 
 =head1 WARNING
 
@@ -155,11 +230,11 @@ Finance::Bank::*
 
 =head1 AUTHOR
 
-Bruno Diaz Briere C<bruno.diaz@gmx.net>
+Bruno Diaz Briere C<brunodiaz@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004 by Bruno Diaz Briere
+Copyright (C) 2007 by Bruno Diaz Briere
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.1 or,

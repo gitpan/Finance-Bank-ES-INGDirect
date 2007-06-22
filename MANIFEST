@@ -2,6 +2,6 @@ Changes
 Makefile.PL
 MANIFEST
 README
+t/Finance-Bank-ES-INGDirect.t
 lib/Finance/Bank/ES/INGDirect.pm
-t/use.t
 META.yml                                 Module meta-data (added by MakeMaker)
