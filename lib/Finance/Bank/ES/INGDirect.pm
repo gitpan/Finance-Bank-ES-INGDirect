@@ -5,7 +5,7 @@ use HTML::Tree;
 use Digest::MD5 qw (md5_base64);
 use warnings;
 use Carp;
-our $VERSION='0.03';
+our $VERSION='0.04';
 
 
 my $inicio='https://www.ingdirect.es/WebTransactional/Transactional/AccesoClientes.asp';
@@ -75,7 +75,6 @@ sub entra {
  }
  $resultado=$mech->submit_form(form_name=>'LoginForm');
  $texto=$resultado->content();
- $resultado=$mech->submit_form(form_name=>'f1');
  return $self;
 }
 
